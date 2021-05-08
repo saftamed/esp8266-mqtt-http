@@ -1,104 +1,170 @@
-/*
-  Rui Santos
-  Complete project details at Complete project details at https://RandomNerdTutorials.com/esp8266-nodemcu-http-get-open-weather-map-thingspeak-arduino/
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files.
-
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-*/
-
 #include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
-#include <WiFiClient.h>
-#include <Arduino_JSON.h>
+#include <PubSubClient.h> // https://github.com/knolleary/pubsubclient/releases/tag/v2.3
+#include <ArduinoJson.h> // https://github.com/bblanchon/ArduinoJson/releases/tag/v5.0.7
+#include <ESP8266WebServer.h>
+//-------- Customise these values -----------
+// const char* ssid = "TOPNET_19E8";
+// const char* password = "u9pHINUEal";
+ String ssid = "ddd";
+ String password = "ddddddd";
 
- const char* ssid = "TOPNET_19E8";
- const char* password = "u9pHINUEal";
-//Your Domain name with URL path or IP address with path
-String serverName = "http://192.168.1.15";
+//-------- Customise the above values --------
 
-// the following variables are unsigned longs because the time, measured in
-// milliseconds, will quickly become a bigger number than can be stored in an int.
-unsigned long lastTime = 0;
-// Timer set to 10 minutes (600000)
-//unsigned long timerDelay = 600000;
-// Set timer to 5 seconds (5000)
-unsigned long timerDelay = 5000;
 IPAddress local_IP(192, 168, 1, 184);
 // Set your Gateway IP address
 IPAddress gateway(192, 168, 1, 1);
+
 IPAddress subnet(255, 255, 0, 0);
-IPAddress primaryDNS(8, 8, 8, 8); // optional
-IPAddress secondaryDNS(8, 8, 4, 4);
+
+
+char serverr[] = "192.168.1.15";
+char clientId[] = "safta001";
+
+const char eventTopic[] = "iot-2/saftamed";
+const char cmdTopic[] = "iot-2/saftamed";
+
+bool pwd = true;
+
+WiFiClient wifiClient;
+void callback(char* topic, byte* payload, unsigned int payloadLength) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < payloadLength; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+   DynamicJsonDocument doc(512);
+deserializeJson(doc, payload);
+
+String action = doc["action"];
+ int pin = doc["pin"];
+  int value = doc["value"];
+
+  if(action=="D"){
+    pinMode(pin,OUTPUT);
+    digitalWrite(pin,!value);
+  }
+
+}
+PubSubClient client(serverr, 1883, callback, wifiClient);
+ESP8266WebServer server(80);
+int publishInterval = 5000; // 5 seconds//Send adc every 5sc
+long lastPublishMillis;
+
+void handleRoot() {
+  String response = "<link rel='stylesheet' href='http://192.168.1.15:5000/css/ss.css'><form class='form' action=\"update\"><select name=\"ssid\">";
+  byte numSsid = WiFi.scanNetworks();
+
+  for (int thisNet = 0; thisNet<numSsid; thisNet++) {
+    response +="<option>"+WiFi.SSID(thisNet) + "</option>";
+  } 
+   response +="</select><input type='password' name='password'><input type='submit' value='send'></form>";
+  server.send(200, "text/html", response);
+
+}
+void handleUpdate(){
+
+  ssid = server.arg("ssid");
+  password =server.arg("password");
+  server.send(200, "text/html", "ok");
+     Serial.println(ssid);
+   Serial.println(password);
+   delay(3000);
+  pwd = false;  
+
+
+}
+void serveForPwd(){
+    WiFi.mode(WIFI_AP_STA);
+  Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Ready" : "Failed!");    
+  Serial.print("Configuring access point...");
+  WiFi.softAP("safta", "ap_password");
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(myIP);
+  server.on("/", handleRoot);  
+  server.on("/update", handleUpdate);  
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
 void setup() {
-  Serial.begin(115200); 
-    if (!WiFi.config(local_IP, gateway, subnet,primaryDNS,secondaryDNS)) {
-    Serial.println("STA Failed to configure");
+  Serial.begin(9600); Serial.println();
+
+  
+  serveForPwd();
+  while(pwd){
+      server.handleClient();
   }
-  WiFi.begin(ssid, password);
-  Serial.println("Connecting");
-  while(WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to WiFi network with IP Address: ");
-  Serial.println(WiFi.localIP());
- 
-  Serial.println("Timer set to 5 seconds (timerDelay variable), it will take 5 seconds before publishing the first reading.");
+
+WiFi.softAPdisconnect (true);
+  wifiConnect();
+  mqttConnect();
 }
 
 void loop() {
-  //Send an HTTP POST request every 10 minutes
-  if ((millis() - lastTime) > timerDelay) {
-    //Check WiFi connection status
-    if(WiFi.status()== WL_CONNECTED){
-      HTTPClient http;
+  /*if (millis() - lastPublishMillis > publishInterval) {
+    publishData();
+    lastPublishMillis = millis();
+    //delay(100);
+    //digitalWrite(2,LOW);
+  }*/
 
-      String serverPath = serverName ;
-      
-      // Your Domain name with URL path or IP address with path
-      http.begin("http://192.168.1.15/espitems/1");
-      
-      // Send HTTP GET request
-      int httpResponseCode = http.GET();
-      
-      if (httpResponseCode>0) {
-        /* [{"id":2,"action":"D","pin":5,"value":1},{"id":10,"action":"D","pin":16,"value":1},{"id":12,"action":"D","pin":2,"value":1},{"id":13,"action":"D","pin":7,"value":0}]*/
-        Serial.print("HTTP Response code: ");
-        Serial.println(httpResponseCode);
-        String payload = http.getString();
-        Serial.println(payload);
-        JSONVar myObject = JSON.parse(payload);
-          if (JSON.typeof(myObject) == "undefined") {
-        Serial.println("Parsing input failed!");
-        return;
-      }
-    
-      Serial.print("JSON object = ");
-      Serial.println(myObject);
+  if (!client.loop()) {
+    mqttConnect();
 
- int k = myObject.length();
+  }
+    server.handleClient();
+}
 
-        JSONVar value = myObject[0]["id"];
-        Serial.println(k);
+void wifiConnect() {
+    if (!WiFi.config(local_IP, gateway, subnet)) {
+    Serial.println("STA Failed to configure");
+  }
+  Serial.print("Connecting to "); Serial.print(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.print("nWiFi connected, IP address: "); Serial.println(WiFi.localIP());
 
-      
+}
 
-      
-      }
-      else {
-        Serial.print("Error code: ");
-        Serial.println(httpResponseCode);
-      }
-      // Free resources
-      http.end();
+void mqttConnect() {
+  if (!!!client.connected()) {
+    Serial.print("Reconnecting MQTT client to "); Serial.println(serverr);
+    while (!!!client.connect(clientId)) {
+      Serial.print(".");
+        server.handleClient();
+      delay(500);
     }
-    else {
-      Serial.println("WiFi Disconnected");
+    if (client.subscribe(cmdTopic)) {
+      Serial.println("subscribe to responses OK");
+    } else {
+      Serial.println("subscribe to responses FAILED");
     }
-    lastTime = millis();
+    Serial.println();
   }
 }
+
+
+void publishData() {
+  // read the input on analog pin 0:
+  int sensorValue = 100;
+
+  String payload = "{\"d\":{\"adc\":";
+  payload += String(sensorValue, DEC);
+  payload += "}}";
+
+  Serial.print("Sending payload: "); Serial.println(payload);
+
+  if (client.publish(eventTopic, (char*) payload.c_str())) {
+    Serial.println("Publish OK");
+    //digitalWrite(2,HIGH);
+  } else {
+    Serial.println("Publish FAILED");
+  }
+}
+
