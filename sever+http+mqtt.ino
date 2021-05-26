@@ -36,16 +36,18 @@ void callback(char* topic, byte* payload, unsigned int payloadLength) {
         return;
       }
         Serial.println((int)myObject["value"]);
+  if((String)((const char*)myObject["action"])=="D"){
 
-*
+          pinMode((int)myObject["pin"],OUTPUT);
+          digitalWrite((int)myObject["pin"],!(int)myObject["value"]);
+        }
+
 
  /*  DynamicJsonDocument doc(512);
 deserializeJson(doc, payload);
-
 String action = doc["action"];
  int pin = doc["pin"];
   int value = doc["value"];
-
   if(action=="D"){
     pinMode(pin,OUTPUT);
     digitalWrite(pin,!value);
@@ -58,7 +60,7 @@ int publishInterval = 5000; // 5 seconds//Send adc every 5sc
 long lastPublishMillis;
 
 void handleRoot() {
-  String response = F("<style>.form input[type=password],.form select{width:100%;padding:12px 20px;margin:8px 0;display:inline-block;border:1px solid #ccc;border-radius:4px;box-sizing:border-box}.form input[type=submit]{width:100%;background-color:#4caf50;color:white;padding:14px 20px;margin:8px 0;border:0;border-radius:4px;cursor:pointer}.form input[type=submit]:hover{background-color:#45a049}.form{border-radius:5px;background-color:#f2f2f2;padding:20px}</style><form class='form' action=\"update\"><select name=\"ssid\">");
+  String response =F("<style>.form input[type=password],.form select{width:100%;padding:12px 20px;margin:8px 0;display:inline-block;border:1px solid #ccc;border-radius:4px;box-sizing:border-box}.form input[type=submit]{width:100%;background-color:#4caf50;color:white;padding:14px 20px;margin:8px 0;border:0;border-radius:4px;cursor:pointer}.form input[type=submit]:hover{background-color:#45a049}.form{border-radius:5px;background-color:#f2f2f2;padding:20px}</style><form class='form' action=\"update\"><select name=\"ssid\">");
   byte numSsid = WiFi.scanNetworks();
 
   for (int thisNet = 0; thisNet<numSsid; thisNet++) {
@@ -98,18 +100,17 @@ void setup() {
 
   Serial.begin(9600); Serial.println(topic);
 
-  /*
-  serveForPwd();
-  while(pwd){
-      server.handleClient();
-  }
+  
+//   serveForPwd();
+//   while(pwd){
+//       server.handleClient();
+//   }
+// WiFi.softAPdisconnect (true);
 
-WiFi.softAPdisconnect (true);
-*/
 
   wifiConnect();
   delay(2000);
-  httpGet();
+ httpGet();
   mqttConnect();
 }
 
@@ -177,13 +178,13 @@ void publishData() {
     Serial.println("Publish FAILED");
   }
 }
+
 void httpGet(){
       if(WiFi.status()== WL_CONNECTED){
       HTTPClient http;
       http.begin(httpServeur);
       int httpResponseCode = http.GET();
       if (httpResponseCode>0) {
-        /* [{"id":2,"action":"D","pin":5,"value":1},{"id":10,"action":"D","pin":16,"value":1},{"id":12,"action":"D","pin":2,"value":1},{"id":13,"action":"D","pin":7,"value":0}]*/
         Serial.print("HTTP Response code: ");
         Serial.println(httpResponseCode);
         String payload = http.getString();
@@ -202,18 +203,21 @@ void httpGet(){
 
 
 
+  Serial.println(myObject.length());
 
 
       for (int i=0; i<myObject.length(); i++) {
-        Serial.println((int)myObject[i]["value"]);
-
+      
+            Serial.println((int)myObject[i]["value"]);
         if((String)((const char*)myObject[i]["action"])=="D"){
+
           pinMode((int)myObject[i]["pin"],OUTPUT);
           digitalWrite((int)myObject[i]["pin"],!(int)myObject[i]["value"]);
         }
       
       }
 
+  Serial.println("ggggg");
 
 
 
